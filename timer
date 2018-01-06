@@ -24,7 +24,7 @@ ALARMFILE=$(dirname "$(readlink -f "$0")")/timer_expire.wav
 
 # Parse [HH:[[MM]:SS]] style phrases minutes is default
 function parse-time () {
-	timestr=$1
+	timestr="$1"
 	
 	# Use janky bash method to get the hours, minutes and seconds into an array
 	IFSOLD=$IFS
@@ -60,6 +60,8 @@ function parse-time () {
 			seconds=${ARRTIME[3]}
 			;;
 	esac
+	
+	total_seconds=$(( (($days * 24 + $hours) * 60 + $minutes) * 60 + $seconds ))
 }
 
 
@@ -138,12 +140,30 @@ function get () {
 }
 
 function set () {
-	parse-time $1
-	total_seconds=$(( (($days * 24 + $hours) * 60 + $minutes) * 60 + $seconds ))
-	
-	# After setting the timer, start immediately
-	timerval=$(date -d "now + $total_seconds seconds" '+%s')
-
+	# Determine which format the value is in
+	if [ $# -eq "0" ]; then
+        echo "set must be called with at least one argument" >2
+        
+	elif [ $# -eq "1" ]; then
+        # Format 1: M, MM:SS, HH:MM:SS, DDD:HH:MM:SS (use this format if only one argument is given)
+        parse-time $1
+        
+        # After setting the timer, start immediately
+        settime=$(date -d "now + $total_seconds seconds" '+%s')
+        
+    else
+        # Format 2: 5 days 4hour 3minutes, smart parsing using the built in date parser
+        settime=$(date -d "now + $*" '+%s')
+        total_seconds=$(( $settime - $(date '+%s') ))
+    fi
+    
+    # If this is a recurring timer, set the recur string to be the seconds until the set time
+    if [[ $SYMBOL == "R" ]]; then
+        RECUR_STR=",$total_seconds"
+    fi
+    
+    timerval="$SYMBOL$settime$RECUR_STR"
+    
 	# Change the correct line in the timer file
 	sed -i --follow-symlinks "$LINENUM"'s/.*/'"$timerval"'/' "$FILE"
 }
@@ -462,7 +482,7 @@ case $COMMAND in
     
 	set|s)
         remember
-        set $1
+        set $*
         ;;
 
     from|until|til|to)
@@ -472,7 +492,8 @@ case $COMMAND in
 
     recur|r)
 		remember
-		recur $1
+		SYMBOL="R"
+		set $*
 		;;
 	
 	add|plus|+)
