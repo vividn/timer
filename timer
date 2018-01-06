@@ -323,7 +323,7 @@ function view () {
 						
 						# Write a '-' to the beginning of the line in the timer file
 						SYMBOL="-"
-						sed -i --follow-symlinks "$LINENUM"'s/^(.*)/'"$SYMBOL"'\1/' "$FILE"
+						sed -i --follow-symlinks "$LINENUM"'s/^\(.*\)/'"$SYMBOL"'\1/' "$FILE"
 
 					fi
 
