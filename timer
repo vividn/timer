@@ -20,7 +20,7 @@ trap finish EXIT
 # Where the timer config file is
 FILE=~/.timer
 UNDOFILE=~/.timerundo
-
+ALARMFILE=$(dirname "$(readlink -f "$0")")/timer_expire.wav
 
 # Parse [HH:[[MM]:SS]] style phrases minutes is default
 function parse-time () {
@@ -250,7 +250,7 @@ function toggle_pause () {
 
 function alarm () {
 if [[ "$ALARM" ]]; then
-	paplay ~/timer_expire.wav
+	paplay $ALARMFILE
 else
 	~/bin/bel
 fi
