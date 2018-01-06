@@ -1,0 +1,534 @@
+#!/bin/bash
+
+# Modifies a timer file to be interpreted by timerview
+# The file should be in the format
+# [+]seconds
+
+# If a + is present before the seconds, then timer is a countup timer
+# If a - is present before the seconds, then the timer is paused and expired
+# The seconds term is different depending on if the timer is paused or running. If paused, then the seconds represent how much time is on the timer in seconds. If the timer is running, then the seconds are the zero point in epoch time. The arbitrary dividing line between paused and running is half of the current epoch time
+
+
+# Clean up when done
+function finish {
+  # Turn cursor visible again
+  tput cnorm
+}
+trap finish EXIT
+
+
+# Where the timer config file is
+FILE=~/.timer
+UNDOFILE=~/.timerundo
+
+
+# Parse [HH:[[MM]:SS]] style phrases minutes is default
+function parse-time () {
+	timestr=$1
+	
+	# Use janky bash method to get the hours, minutes and seconds into an array
+	IFSOLD=$IFS
+	IFS=':'
+	read -r -a ARRTIME <<< "$timestr"
+	IFS=$IFSOLD
+	
+	# Now look at the length of the array to determine if minutes, minutes and seconds, or hours minutes and seconds
+	ARRLEN=${#ARRTIME[@]}
+	case $ARRLEN in
+		1)
+			days=0
+			hours=0
+			minutes=${ARRTIME[0]}
+			seconds=0
+			;;
+		2)
+			days=0
+			hours=0
+			minutes=${ARRTIME[0]}
+			seconds=${ARRTIME[1]}
+			;;
+		3)
+			days=0
+			hours=${ARRTIME[0]}
+			minutes=${ARRTIME[1]}
+			seconds=${ARRTIME[2]}
+			;;
+		4)
+			days=${ARRTIME[0]}
+			hours=${ARRTIME[1]}
+			minutes=${ARRTIME[2]}
+			seconds=${ARRTIME[3]}
+			;;
+	esac
+}
+
+
+function get () {
+	# This file reads the timer FILE. Only needs to be run each time the FILE is changed
+	
+	# Read the value in the file
+	LINE=$(awk "NR==$LINENUM"'{print $1}' < $FILE)
+	
+	# Get the starting symbol
+	case ${LINE:0:1} in
+		[0-9]) # Just a normal timer
+			SYMBOL=
+			CURRENT=$LINE
+			;;
+		
+		\+) # A countup timer
+			SYMBOL=+
+			CURRENT=${LINE##\+}
+			;;
+		
+		\-) # An expired timer
+			SYMBOL=-
+			CURRENT=${LINE##\-}
+			;;
+		
+		R) # A recurring timer (uses comma separated current,recurvalue)
+			SYMBOL=R
+			LINE=${LINE##\R}
+			IFS=',' read CURRENT RECUR_VAL <<< $LINE
+			
+			# Make it easier for functions to write recurring timers
+			RECUR_STR=",$RECUR_VAL"
+			;;
+
+
+		*)
+			echo "Invalid timer file. Use 'timer zero' or 'timer set' to fix"
+			exit 26
+			;;
+	esac
+	
+	# Divide the current epoch time by 2 to get the arbitrary divider between paused and active timers
+	DIVIDER=$((( $(date +%s) / 2 )))
+	
+	# Set the state of the timer and also calculate the complementary second amount
+	
+	if [ "$CURRENT" -gt "$DIVIDER" ]; then
+		STATE=running
+		RUNNING_TIME="$CURRENT"
+		case $SYMBOL in
+			\-)
+				PAUSE_TIME=$(( $(date '+%s') - $CURRENT ))
+				;;
+			*)
+				PAUSE_TIME=$(( $CURRENT - $(date '+%s') ))
+				;;
+		esac
+		
+	else
+		STATE=paused
+		PAUSE_TIME="$CURRENT"
+		case $SYMBOL in
+			\-)
+				RUNNING_TIME=$(date -d "now - $CURRENT seconds" '+%s')
+				;;
+			*)
+				RUNNING_TIME=$(date -d "now + $CURRENT seconds" '+%s')
+				;;
+		esac
+	fi
+	
+	# This variable tells the view whether or not it has refreshed yet since the last get
+	VIEW_REFRESHED=''
+	
+}
+
+function set () {
+	parse-time $1
+	total_seconds=$(( (($days * 24 + $hours) * 60 + $minutes) * 60 + $seconds ))
+	
+	# After setting the timer, start immediately
+	timerval=$(date -d "now + $total_seconds seconds" '+%s')
+
+	# Change the correct line in the timer file
+	sed -i --follow-symlinks "$LINENUM"'s/.*/'"$timerval"'/' "$FILE"
+}
+
+function relative () {
+	# Set the timer relative to a certain time
+	timerval=$(date -d "$*" '+%s')
+
+	# If date occured in the past, this is a countup timer
+	if [ "$timerval" -lt "$(date '+%s')" ]; then
+		timerval="+$timerval"
+	fi
+
+	# Change the correct line in the timer file
+	sed -i --follow-symlinks "$LINENUM"'s/.*/'"$timerval"'/' "$FILE"
+
+}
+
+function add () {
+	# Adds minutes to the timer
+	seconds_to_add=$(( $1 * 60 ))
+
+	get
+
+	# Use what the pause time would be to calculate the new pause time
+	if [ $SYMBOL != "+" ]; then
+		new_pausetime=$(( $PAUSE_TIME + $seconds_to_add ))
+	else
+		# If timer is countup, then direction is inverted
+		new_pausetime=$(( $PAUSE_TIME - $seconds_to_add ))
+	fi
+
+	# Write to file
+	timerval="$SYMBOL$new_pausetime$RECUR_STR"
+	sed -i --follow-symlinks "$LINENUM"'s/.*/'"$timerval"'/' "$FILE"
+
+	# If timer was running before, keep it running now
+	if [ "$STATE" == "running" ]; then
+		unpause
+	fi
+
+}
+
+function recur () {
+	parse-time $1
+	total_seconds=$(( (($days * 24 + $hours) * 60 + $minutes) * 60 + $seconds ))
+
+	# Add the recur value after the timer value (separated by a comma)
+	timerval="R$(date -d "now + $total_seconds seconds" '+%s'),$total_seconds"
+
+	# Change the correct line in the timer file
+	sed -i --follow-symlinks "$LINENUM"'s/.*/'"$timerval"'/' "$FILE"
+}
+
+####### Pause and Unpause the Timer ########
+function pause () {
+    get
+    case $STATE in
+    
+		running)
+			timerval="$SYMBOL$PAUSE_TIME$RECUR_STR"
+
+			# Change the correct line in the timer file
+			sed -i --follow-symlinks "$LINENUM"'s/.*/'"$timerval"'/' "$FILE"
+
+			STATE=paused
+			;;
+		
+		paused)
+			;;
+	esac
+}
+
+function unpause () {
+    get
+    case $STATE in    
+		running)
+			;;
+			
+		paused)
+			timerval="$SYMBOL$RUNNING_TIME$RECUR_STR"
+
+			# Change the correct line in the timer file
+			sed -i --follow-symlinks "$LINENUM"'s/.*/'"$timerval"'/' "$FILE"
+
+			STATE=running
+			;;
+	esac
+}	
+
+function toggle_pause () {
+	get
+	case $STATE in
+		running)
+			pause
+			;;
+			
+		paused)
+			unpause
+			;;
+	esac
+}
+############################################
+
+function alarm () {
+if [[ "$ALARM" ]]; then
+	paplay ~/timer_expire.wav
+else
+	~/bin/bel
+fi
+}
+
+function output () {
+		
+	# Find the days worth of seconds left as an integer, than get the remainder. Repeat for hours, minutes, and seconds
+	display_days=$(( $seconds_left / $(( 60 * 60 * 24 )) ))
+	seconds_left=$(( $seconds_left - $display_days * 60 * 60 * 24 ))
+	
+	display_hours=$(( $seconds_left / $(( 60 * 60)) ))
+	seconds_left=$(( $seconds_left - $display_hours * 60 * 60 ))
+	
+	display_minutes=$(( $seconds_left / 60 ))
+	seconds_left=$(( $seconds_left - $display_minutes * 60 ))
+	
+	display_seconds=$seconds_left
+	
+	# Format string for outputting the timer
+	format_string='%1.1s%d:%.2d:%.2d:%.2d'
+	
+	# If days or hours are zero, make them blank
+	if [ "$display_days" -eq "0" ]; then
+		format_string='%1.1s%.0d%.2d:%.2d:%.2d'
+		
+		if [ "$display_hours" -eq "0" ]; then
+			format_string='%1.1s%.0d%.0d%.2d:%.2d'
+		fi
+	fi
+	
+	# if timer view is called with a timer number, show the number
+	if [ "$SHOWNUMBER" ]; then
+		tput dim
+		echo -n "$NTIMER|"
+		tput sgr0
+	fi
+
+	# Print the time
+	printf "$format_string" "$SYMBOL" "$display_days" "$display_hours" "$display_minutes" "$display_seconds"
+}
+
+function view () {
+	tput civis
+	tput clear
+	get
+	
+	# Whenever the timer file is updated, rerun get to get the new state
+	trap get SIGUSR1
+	echo $FILE | entr -p kill -SIGUSR1 $$ &
+	
+	while true; do
+		case $STATE in
+		
+			running)
+				seconds_left=$(( $CURRENT - $(date '+%s') ))
+				
+				if [ -z $VIEW_REFRESHED ]; then
+					# Refresh the screen if a get has been run
+					tput clear
+				fi
+				
+				# If seconds is less than 0, then change seconds to positive. Symbols are added later.
+				if [ "$seconds_left" -le "0" ]; then
+					(( seconds_left *= -1 ))
+					
+					# If SYMBOL is empty, this means the timer has counted down to zero. Sound alarm and signal timer as expired
+					if [[ ! $SYMBOL ]]; then
+						alarm &
+						
+						# Write a '-' to the beginning of the line in the timer file
+						SYMBOL="-"
+						sed -i --follow-symlinks "$LINENUM"'s/^(.*)/'"$SYMBOL"'\1/' "$FILE"
+
+					fi
+
+					# If SYMBOL is R, this is a recurring timer. Sound the alarm and reset the timer
+					if [ "$SYMBOL" = "R" ]; then
+						alarm &
+
+						# Add the recur value to the current timer
+						# If no timer view has been active might have to catch up multiple cycles (hence the while loop)
+						while 
+							let "CURRENT += RECUR_VAL"
+							[ "$CURRENT" -lt $(date '+%s') ]
+						do true; done
+
+						# Change the correct line in the timer file
+						timerval="$SYMBOL$CURRENT$RECUR_STR"
+						sed -i --follow-symlinks "$LINENUM"'s/.*/'"$timerval"'/' "$FILE"
+					fi
+
+
+				
+				fi
+				# Move cursor to begining of the linene, outoutput the timer, and then clear to the end of thline
+				tput cup 0 0
+				output
+				tput el
+				;;
+			
+			paused)
+				if [ -z $VIEW_REFRESHED ]; then
+					seconds_left=$CURRENT
+					
+					# Refresh the screen if a get has been run
+					tput clear
+					
+					output
+					VIEW_REFRESHED=true
+				fi
+
+				# Refresh if enter is pressed on the timer
+				if $(read -t0); then
+					tput clear
+					output
+				fi
+			;;
+			
+		esac
+		
+		sleep 1
+	done
+			
+	
+}
+
+function show () {
+	get
+	case $STATE in
+		running)
+			seconds_left=$(( $CURRENT - $(date '+%s') ))
+
+			if [ "$seconds_left" -le "0" ]; then
+					(( seconds_left *= -1 ))
+      fi
+
+			;;
+		paused)
+			seconds_left=$CURRENT
+			;;
+	esac
+	output
+}
+
+function remember () {
+	# Save the current timer state to the UNDO file
+	cat $FILE > $UNDOFILE
+}
+
+function undo () {
+	# If undo has already been used once report that to the user
+	if [ ! -s $UNDOFILE ]; then
+		echo "Undo currently has a max depth of 1"
+
+	else
+		# Replace the timer file with the undo file
+		cat $UNDOFILE > $FILE
+
+		# Empty the UNDOFILE to indicate that it has been used
+		:>$UNDOFILE
+
+	fi
+}
+
+function zero () {
+	timerval="+0"
+
+	# Change the correct line in the timer file
+	sed -i --follow-symlinks "$LINENUM"'s/.*/'"$timerval"'/' "$FILE"
+
+	get
+}
+
+
+
+# If the first argument is a number, use that as the active timer
+if [ "$1" -eq "$1" ] 2>/dev/null; then
+	NTIMER="$1"
+	shift
+
+	# TODO: Allow option to make timer 0 based by adding 1 here
+	LINENUM=$(( NTIMER + 0 ))
+
+	# If the timer file does not currently have this many lines, add timers until it does
+	while [ $(wc -l < $FILE) -lt "$LINENUM" ]; do
+		echo "+0" >> $FILE
+	done
+
+	SHOWNUMBER=true
+
+else
+	NTIMER=1
+	LINENUM=1
+	SHOWNUMBER=
+fi
+
+# Get the command
+if [ $# -gt 0 ]; then
+    COMMAND=$1
+    shift
+else
+    # Default command
+    COMMAND=show
+fi
+
+
+case $COMMAND in    
+    
+	set|s)
+        remember
+        set $1
+        ;;
+
+    from|until|til|to)
+		remember
+		relative $*
+		;;
+
+    recur|r)
+		remember
+		recur $1
+		;;
+	
+	add|plus|+)
+		remember
+		add $1
+		;;
+
+	subtract|minus|-)
+		remember
+		val=$(( $1 * -1 ))
+		add $val
+		;;
+
+	pause|stop)
+		remember
+		pause
+		;;
+		
+	go|start|play)
+		remember
+		unpause
+		;;
+		
+	p|pp|toggle)
+		remember
+		toggle_pause
+		;;
+	
+	zero|z|0)
+		remember
+		zero
+		;;
+
+	undo|u)
+		undo
+		;;
+	
+	view|v)
+		if [[ "$1" == "alarm" ]]; then
+			# Only do an audible alarm if alarm is specified
+			ALARM=true
+		else
+			ALARM=
+		fi
+		view
+		;;
+	
+	print|show|now)
+		show
+		;;
+
+    *)
+        echo "$1" is an invalid command
+        ;;
+esac
+
+
+        
+        
