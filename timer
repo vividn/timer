@@ -445,28 +445,29 @@ function zero () {
 	get
 }
 
-
+# If the timer file doesn't exist create it
+if [ ! -e $FILE ]; then
+    touch $FILE
+fi
 
 # If the first argument is a number, use that as the active timer
 if [ "$1" -eq "$1" ] 2>/dev/null; then
 	NTIMER="$1"
 	shift
-
-	# TODO: Allow option to make timer 0 based by adding 1 here
-	LINENUM=$(( NTIMER + 0 ))
-
-	# If the timer file does not currently have this many lines, add timers until it does
-	while [ $(wc -l < $FILE) -lt "$LINENUM" ]; do
-		echo "+0" >> $FILE
-	done
-
+	
 	SHOWNUMBER=true
-
 else
-	NTIMER=1
-	LINENUM=1
-	SHOWNUMBER=
+    NTIMER=1
+    SHOWNUMBER=
 fi
+
+# TODO: Allow option to make timer 0 based by adding 1 here
+LINENUM=$(( NTIMER + 0 ))
+
+# If the timer file does not currently have this many lines, add timers until it does
+while [ $(wc -l < $FILE) -lt "$LINENUM" ]; do
+    echo "+0" >> $FILE
+done
 
 # Get the command
 if [ $# -gt 0 ]; then
