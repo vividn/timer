@@ -280,7 +280,7 @@ if [[ "$ALARM" ]]; then
 fi
 
 if [[ "$ALARM_SCRIPT" ]]; then
-    $SCRIPTFILE
+    $SCRIPTFILE $NTIMER
 fi
 }
 
