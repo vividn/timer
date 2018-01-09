@@ -1,12 +1,10 @@
 #!/bin/bash
 
-# Modifies a timer file to be interpreted by timerview
-# The file should be in the format
-# [+]seconds
+# timer
+# A lightweight, feature-rich timer program written entirely in bash
+# See README.md for details
 
-# If a + is present before the seconds, then timer is a countup timer
-# If a - is present before the seconds, then the timer is paused and expired
-# The seconds term is different depending on if the timer is paused or running. If paused, then the seconds represent how much time is on the timer in seconds. If the timer is running, then the seconds are the zero point in epoch time. The arbitrary dividing line between paused and running is half of the current epoch time
+# Nate Faber, 2016-2018
 
 
 # Clean up when done
