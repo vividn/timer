@@ -185,16 +185,22 @@ function relative () {
 
 function add () {
 	# Adds minutes to the timer
-	seconds_to_add=$(( $1 * 60 ))
+	parse-time $*
 
 	get
-
+    
+    # If subtracting, flip the sign
+    if [[ $SUBTRACT ]]; then
+        total_seconds=$(( $total_seconds * -1 ))
+    fi
+    
 	# Use what the pause time would be to calculate the new pause time
-	if [ $SYMBOL != "+" ]; then
-		new_pausetime=$(( $PAUSE_TIME + $seconds_to_add ))
+	if [[ $SYMBOL == "+" ]] || [[ $SYMBOL == "-" ]]; then
+        # If timer is expired or is countup, then direction is inverted
+		new_pausetime=$(( $PAUSE_TIME - $total_seconds ))
 	else
-		# If timer is countup, then direction is inverted
-		new_pausetime=$(( $PAUSE_TIME - $seconds_to_add ))
+		
+		new_pausetime=$(( $PAUSE_TIME + $total_seconds ))
 	fi
 
 	# Write to file
@@ -500,13 +506,13 @@ case $COMMAND in
 	
 	add|plus|+)
 		remember
-		add $1
+		add $*
 		;;
 
 	subtract|minus|-)
 		remember
-		val=$(( $1 * -1 ))
-		add $val
+		SUBTRACT=true
+		add $*
 		;;
 
 	pause|stop)
