@@ -21,6 +21,7 @@ trap finish EXIT
 FILE=~/.timer
 UNDOFILE=~/.timerundo
 ALARMFILE=$(dirname "$(readlink -f "$0")")/timer_expire.wav
+SCRIPTFILE=~/.timerscript
 
 # Parse [HH:[[MM]:SS]] style phrases minutes is default
 function parse-time () {
@@ -278,8 +279,10 @@ function toggle_pause () {
 function alarm () {
 if [[ "$ALARM" ]]; then
 	paplay $ALARMFILE
-else
-	~/bin/bel
+fi
+
+if [[ "$ALARM_SCRIPT" ]]; then
+    $SCRIPTFILE
 fi
 }
 
@@ -540,12 +543,25 @@ case $COMMAND in
 		;;
 	
 	view|v)
-		if [[ "$1" == "alarm" ]]; then
-			# Only do an audible alarm if alarm is specified
-			ALARM=true
-		else
-			ALARM=
-		fi
+        while [ $# -gt "0" ]; do
+            case "$1" in
+            
+                alarm)
+                    ALARM=true
+                    ;;
+                
+                script)
+                    ALARM_SCRIPT=true
+                    ;;
+                    
+                *)
+                    echo "Unrecognized alarm function" >2
+                    ;;
+            
+            esac
+            shift
+        done
+
 		view
 		;;
 	
