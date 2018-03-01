@@ -124,7 +124,7 @@ function get () {
 		STATE=running
 		RUNNING_TIME="$CURRENT"
 		case $SYMBOL in
-			\-)
+			\-|\+)
 				PAUSE_TIME=$(( $(date '+%s') - $CURRENT ))
 				;;
 			*)
