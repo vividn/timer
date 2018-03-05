@@ -582,4 +582,4 @@ function zero () {
 }
 
 # Run the main function
-main()
+main $*
