@@ -7,77 +7,144 @@
 # Nate Faber, 2016-2018
 
 
+# Main function body
+function main () {
+    # Define where all the files are
+    FILE=~/.timer
+    UNDOFILE=~/.timerundo
+    ALARMFILE=$(dirname "$(readlink -f "$0")")/timer_expire.wav
+    SCRIPTFILE=~/.timerscript
+    
+    # If the timer file doesn't exist create it
+    if [ ! -e $FILE ]; then
+        touch $FILE
+    fi
+
+    # If the first argument is a number, use that as the active timer
+    if [ "$1" -eq "$1" ] 2>/dev/null; then
+        NTIMER="$1"
+        shift
+        
+        SHOWNUMBER=true
+    else
+        NTIMER=1
+        SHOWNUMBER=
+    fi
+
+    # TODO: Allow option to make timer 0 based by adding 1 here
+    LINENUM=$(( NTIMER + 0 ))
+
+    # If the timer file does not currently have enough lines, add timers until it does
+    while [ $(wc -l < $FILE) -lt "$LINENUM" ]; do
+        echo "+0" >> $FILE
+    done
+
+    # Get the command
+    if [ $# -gt 0 ]; then
+        COMMAND=$1
+        shift
+    else
+        # Default command
+        COMMAND=show
+    fi
+
+
+    case $COMMAND in    
+        
+        set|s)
+            remember
+            set $*
+            ;;
+
+        from|until|til|to)
+            remember
+            relative $*
+            ;;
+
+        recur|r)
+            remember
+            SYMBOL="R"
+            set $*
+            ;;
+        
+        add|plus|+)
+            remember
+            add $*
+            ;;
+
+        sub|minus|-)
+            remember
+            SUBTRACT=true
+            add $*
+            ;;
+
+        pause|stop)
+            remember
+            pause
+            ;;
+            
+        go|start|play)
+            remember
+            unpause
+            ;;
+            
+        p|pp|toggle)
+            remember
+            toggle_pause
+            ;;
+        
+        zero|z|0)
+            remember
+            zero
+            ;;
+
+        undo|u)
+            undo
+            ;;
+        
+        view|v)
+            while [ $# -gt "0" ]; do
+                case "$1" in
+                
+                    alarm)
+                        ALARM=true
+                        ;;
+                    
+                    script)
+                        ALARM_SCRIPT=true
+                        ;;
+                        
+                    *)
+                        echo "Unrecognized alarm function" >2
+                        ;;
+                
+                esac
+                shift
+            done
+
+            view
+            ;;
+        
+        print|show|now)
+            show
+            ;;
+
+        *)
+            echo "$1" is an invalid command
+            ;;
+    esac
+}
+
 # Clean up when done
-function finish {
+function finish () {
   # Turn cursor visible again
   tput cnorm
 }
 trap finish EXIT
 
 
-# Where the timer config file is
-FILE=~/.timer
-UNDOFILE=~/.timerundo
-ALARMFILE=$(dirname "$(readlink -f "$0")")/timer_expire.wav
-SCRIPTFILE=~/.timerscript
-
-# Parse [HH:[[MM]:SS]] style phrases minutes is default
-function parse-time () {
-	# Determine which format the value is in
-	if [ $# -eq "0" ]; then
-        echo "set must be called with at least one argument" >2
-        
-	elif [ $# -eq "1" ]; then
-        # Format 1: M, MM:SS, HH:MM:SS, DDD:HH:MM:SS (use this format if only one argument is given)
-        
-        # Use janky bash method to get the hours, minutes and seconds into an array (splitting at :)
-        IFSOLD=$IFS
-        IFS=':'
-        read -r -a ARRTIME <<< "$1"
-        IFS=$IFSOLD
-        
-        # Now look at the length of the array to determine if minutes, minutes and seconds, or hours minutes and seconds
-        ARRLEN=${#ARRTIME[@]}
-        case $ARRLEN in
-            1)
-                days=0
-                hours=0
-                minutes=${ARRTIME[0]}
-                seconds=0
-                ;;
-            2)
-                days=0
-                hours=0
-                minutes=${ARRTIME[0]}
-                seconds=${ARRTIME[1]}
-                ;;
-            3)
-                days=0
-                hours=${ARRTIME[0]}
-                minutes=${ARRTIME[1]}
-                seconds=${ARRTIME[2]}
-                ;;
-            4)
-                days=${ARRTIME[0]}
-                hours=${ARRTIME[1]}
-                minutes=${ARRTIME[2]}
-                seconds=${ARRTIME[3]}
-                ;;
-        esac
-	
-        total_seconds=$(( (($days * 24 + $hours) * 60 + $minutes) * 60 + $seconds ))
-      
-    else
-        # Format 2: 5 days 4 hours 3 minutes, smart parsing using the built in date parser
-        settime=$(date -d "now + $*" '+%s')
-        total_seconds=$(( $settime - $(date '+%s') ))
-    fi	
-	
-}
-
-
 function get () {
-	# This file reads the timer FILE. Only needs to be run each time the FILE is changed
+	# Parses the timer FILE. Only needs to be run each time the FILE is changed
 	
 	# Read the value in the file
 	LINE=$(awk "NR==$LINENUM"'{print $1}' < $FILE)
@@ -145,10 +212,71 @@ function get () {
 		esac
 	fi
 	
-	# This variable tells the view whether or not it has refreshed yet since the last get
+	# This variable tells timer view whether or not it has refreshed yet since the last get
 	VIEW_REFRESHED=''
 	
 }
+
+
+function parse-time () {
+    # Parses durations specified on the command line
+    # 2 formats are available:
+    # 1. [HH:[[MM]:SS]] style phrases (colon separated numbers)
+    # 2. '5 minutes 3 seconds', time phrases, which are parsed by date utility
+    
+    
+	# Determine which format the value is in
+	if [ $# -eq "0" ]; then
+        echo "duration must be specified with that command" >2
+        
+	elif [ $# -eq "1" ]; then
+        # Format 1: M, MM:SS, HH:MM:SS, DDD:HH:MM:SS (use this format if only one argument is given)
+        
+        # Use janky bash method to get the hours, minutes and seconds into an array (splitting at :)
+        IFSOLD=$IFS
+        IFS=':'
+        read -r -a ARRTIME <<< "$1"
+        IFS=$IFSOLD
+        
+        # Now look at the length of the array to determine if minutes, minutes and seconds, or hours minutes and seconds
+        ARRLEN=${#ARRTIME[@]}
+        case $ARRLEN in
+            1)
+                days=0
+                hours=0
+                minutes=${ARRTIME[0]}
+                seconds=0
+                ;;
+            2)
+                days=0
+                hours=0
+                minutes=${ARRTIME[0]}
+                seconds=${ARRTIME[1]}
+                ;;
+            3)
+                days=0
+                hours=${ARRTIME[0]}
+                minutes=${ARRTIME[1]}
+                seconds=${ARRTIME[2]}
+                ;;
+            4)
+                days=${ARRTIME[0]}
+                hours=${ARRTIME[1]}
+                minutes=${ARRTIME[2]}
+                seconds=${ARRTIME[3]}
+                ;;
+        esac
+	
+        total_seconds=$(( (($days * 24 + $hours) * 60 + $minutes) * 60 + $seconds ))
+      
+    else
+        # Format 2: 5 days 4 hours 3 minutes, smart parsing using the built in date parser
+        settime=$(date -d "now + $*" '+%s')
+        total_seconds=$(( $settime - $(date '+%s') ))
+    fi	
+	
+}
+
 
 function set () {
 	# Parse the inputs
@@ -453,125 +581,5 @@ function zero () {
 	get
 }
 
-# If the timer file doesn't exist create it
-if [ ! -e $FILE ]; then
-    touch $FILE
-fi
-
-# If the first argument is a number, use that as the active timer
-if [ "$1" -eq "$1" ] 2>/dev/null; then
-	NTIMER="$1"
-	shift
-	
-	SHOWNUMBER=true
-else
-    NTIMER=1
-    SHOWNUMBER=
-fi
-
-# TODO: Allow option to make timer 0 based by adding 1 here
-LINENUM=$(( NTIMER + 0 ))
-
-# If the timer file does not currently have this many lines, add timers until it does
-while [ $(wc -l < $FILE) -lt "$LINENUM" ]; do
-    echo "+0" >> $FILE
-done
-
-# Get the command
-if [ $# -gt 0 ]; then
-    COMMAND=$1
-    shift
-else
-    # Default command
-    COMMAND=show
-fi
-
-
-case $COMMAND in    
-    
-	set|s)
-        remember
-        set $*
-        ;;
-
-    from|until|til|to)
-		remember
-		relative $*
-		;;
-
-    recur|r)
-		remember
-		SYMBOL="R"
-		set $*
-		;;
-	
-	add|plus|+)
-		remember
-		add $*
-		;;
-
-	subtract|minus|-)
-		remember
-		SUBTRACT=true
-		add $*
-		;;
-
-	pause|stop)
-		remember
-		pause
-		;;
-		
-	go|start|play)
-		remember
-		unpause
-		;;
-		
-	p|pp|toggle)
-		remember
-		toggle_pause
-		;;
-	
-	zero|z|0)
-		remember
-		zero
-		;;
-
-	undo|u)
-		undo
-		;;
-	
-	view|v)
-        while [ $# -gt "0" ]; do
-            case "$1" in
-            
-                alarm)
-                    ALARM=true
-                    ;;
-                
-                script)
-                    ALARM_SCRIPT=true
-                    ;;
-                    
-                *)
-                    echo "Unrecognized alarm function" >2
-                    ;;
-            
-            esac
-            shift
-        done
-
-		view
-		;;
-	
-	print|show|now)
-		show
-		;;
-
-    *)
-        echo "$1" is an invalid command
-        ;;
-esac
-
-
-        
-        
+# Run the main function
+main()
