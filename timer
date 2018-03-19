@@ -205,7 +205,7 @@ function get () {
 		STATE=paused
 		PAUSE_TIME="$CURRENT"
 		case $SYMBOL in
-			\-)
+			\-|\+)
 				RUNNING_TIME=$(date -d "now - $CURRENT seconds" '+%s')
 				;;
 			*)
