@@ -115,7 +115,7 @@ function main () {
                         ;;
                         
                     *)
-                        echo "Unrecognized alarm function" >2
+                        echo "Unrecognized alarm function" >&2
                         ;;
                 
                 esac
@@ -229,7 +229,7 @@ function parse-time () {
     
 	# Determine which format the value is in
 	if [ $# -eq "0" ]; then
-        echo "duration must be specified with that command" >2
+        echo "duration must be specified with that command" >&2
         
 	elif [ $# -eq "1" ]; then
         # Format 1: M, MM:SS, HH:MM:SS, DDD:HH:MM:SS (use this format if only one argument is given)
