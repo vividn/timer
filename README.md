@@ -21,7 +21,11 @@ Lightweight, fully-featured timer program written entirely in bash
 - libnotify (to get notifications when timer expires)
 
 ### Installation
-Clone the repository, and make a link to `timer` somewhere along the PATH.
+```
+git clone git@github.com:vividn/timer.git
+cd timer
+sudo ln -s $PWD/timer /usr/local/bin/timer
+```
 
 ## Commands
 Timers are issued commands with the following syntax
