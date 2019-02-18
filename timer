@@ -313,33 +313,40 @@ function relative () {
 }
 
 function add () {
-	# Adds minutes to the timer
-	parse-time $*
+    # Adds minutes to the timer
+    parse-time $*
 
-	get
+    get
     
     # If subtracting, flip the sign
     if [[ $SUBTRACT ]]; then
         total_seconds=$(( $total_seconds * -1 ))
     fi
-    
-	# Use what the pause time would be to calculate the new pause time
-	if [[ $SYMBOL == "+" ]] || [[ $SYMBOL == "-" ]]; then
-        # If timer is expired or is countup, then direction is inverted
-		new_pausetime=$(( $PAUSE_TIME - $total_seconds ))
-	else
-		
-		new_pausetime=$(( $PAUSE_TIME + $total_seconds ))
-	fi
 
-	# Write to file
-	timerval="$SYMBOL$new_pausetime$RECUR_STR"
-	sed -i --follow-symlinks "$LINENUM"'s/.*/'"$timerval"'/' "$FILE"
+    # Use what the pause time would be to calculate the new pause time
+    if [[ $SYMBOL == "-" ]]; then
+        # If timer is expired then direction is inverted
+        new_pausetime=$(( $PAUSE_TIME - $total_seconds ))
+        echo $new_pausetime
+        # if now above 0, get rid of the minus sign (it's less than 0 in the equation because PAUSE_TIME ignores the symbol)
+        if [ $new_pausetime -lt 0 ]; then
+            new_pausetime=$(( $new_pausetime * -1 ))
+            SYMBOL=
+        fi
 
-	# If timer was running before, keep it running now
-	if [ "$STATE" == "running" ]; then
-		unpause
-	fi
+    else
+        
+        new_pausetime=$(( $PAUSE_TIME + $total_seconds ))
+    fi
+
+    # Write to file
+    timerval="$SYMBOL$new_pausetime$RECUR_STR"
+    sed -i --follow-symlinks "$LINENUM"'s/.*/'"$timerval"'/' "$FILE"
+
+    # If timer was running before, keep it running now
+    if [ "$STATE" == "running" ]; then
+		    unpause
+	  fi
 
 }
 
