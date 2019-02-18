@@ -29,16 +29,16 @@ sudo ln -s $PWD/timer /usr/local/bin/timer
 
 ## Commands
 Timers are issued commands with the following syntax
-`timer [*n*] *command* *args*`, where `*n*` is the timer number. If `*n*` is omitted timer 1 is assumed.
+`timer [n] <command> <args>`, where `n` is the timer number. If `n` is omitted timer 1 is assumed.
 
 | Command | Action | Args |
 |---------|--------|------|
-| `set`,`s` | Sets and starts a countdown timer | Duration |
-| `pause`,`stop` | Pauses a currently running timer | |
-| `start`,`go`,`play` | Resumes a paused timer, or starts a countup timer |  |
-| `toggle`,`p`,`pp` | Toggles pause state of timer |  |
-| `zero`, `z` | Resets the timer to +00:00 |  |
-| `recur`, `r` | Sets and starts a recurring countdown timer | Duration |
-| `from`, `until`, `til`, `to` | starts a timer relative to the time specified | Time |
-| `plus`, `+`, `add` | Adds *Duration* to the timer | Duration |
+| `set`,`s` | Set and starts a countdown timer | Duration |
+| `pause`,`stop` | Pause a currently running timer | |
+| `start`,`go`,`play` | Resume a paused timer or start a countup timer |  |
+| `toggle`,`p`,`pp` | Toggle pause state of timer |  |
+| `zero`, `z` | Reset the timer to +00:00 |  |
+| `recur`, `r` | Set and start a recurring countdown timer | Duration |
+| `from`, `until`, `til`, `to` | start a timer relative to the time specified | Time |
+| `plus`, `+`, `add` | Add *Duration* to the timer | Duration |
 | `minus`, `-`, `sub` | Subtract *Duration* from the timer | Duration |
