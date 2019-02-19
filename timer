@@ -78,6 +78,11 @@ function main () {
             add $*
             ;;
 
+        reverse|rev)
+            remember
+            reverse
+            ;;
+
         pause|stop)
             remember
             pause
@@ -312,6 +317,36 @@ function relative () {
 
 }
 
+function reverse () {
+    # Reverse the direction of the timer
+    # Countup becomes countdown
+    # Unexpired countdown becomes countup
+    # Expired countdown becomes unexpired countdown
+
+    get
+    case $symbol in
+        +|-)
+            symbol=
+            ;;
+        R)
+            echo "You can't reverse a recurring timer" >&2
+            exit 1
+            ;;
+        *)
+            symbol='+'
+            ;;
+    esac
+
+    # Write to file
+    timerVal="$symbol$pauseTime$recurStr"
+    sed -i --follow-symlinks "$nLine"'s/.*/'"$timerVal"'/' "$timerFile"
+
+    # If timer was running before, keep it running now
+    if [ "$timerState" == "running" ]; then
+		    unpause
+	  fi
+
+}
 function add () {
     # Adds minutes to the timer
     parse-time $*
@@ -409,6 +444,7 @@ function toggle_pause () {
 			;;
 	esac
 }
+
 ############################################
 
 function alarm () {
