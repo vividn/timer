@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # timer
 # A lightweight, feature-rich timer program written entirely in bash
